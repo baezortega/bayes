@@ -1,8 +1,12 @@
 # Function for running a robust correlation model in Stan
 # Adrian Baez-Ortega, 2018
-# This model is based on Rasmus Bååth's
-# See: http://www.sumsar.net/blog/2013/08/robust-bayesian-estimation-of-correlation/
-#      http://www.sumsar.net/blog/2013/08/bayesian-estimation-of-correlation/
+#
+# To learn how to use this model, see
+#    https://github.com/baezortega/bayes/tree/master/robust_correlation
+#
+# This model is based on Rasmus Bååth's, see 
+#    http://www.sumsar.net/blog/2013/08/robust-bayesian-estimation-of-correlation/
+#    http://www.sumsar.net/blog/2013/08/bayesian-estimation-of-correlation/
 
 rob.cor.mcmc = function(x, iter = 6000, warmup = 1000, chains = 1) {
     

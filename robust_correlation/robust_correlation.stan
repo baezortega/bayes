@@ -1,5 +1,9 @@
 // Robust correlation model in Stan
 // Adrian Baez-Ortega, 2018
+//
+// To learn how to use this model, see
+//    https://github.com/baezortega/bayes/tree/master/robust_correlation
+//
 // This model is based on Rasmus Bååth's, see
 //    http://www.sumsar.net/blog/2013/08/robust-bayesian-estimation-of-correlation/
 //    http://www.sumsar.net/blog/2013/08/bayesian-estimation-of-correlation/
