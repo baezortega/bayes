@@ -7,6 +7,9 @@
 # This model is based on Rasmus Bååth's, see 
 #    http://www.sumsar.net/blog/2013/08/robust-bayesian-estimation-of-correlation/
 #    http://www.sumsar.net/blog/2013/08/bayesian-estimation-of-correlation/
+#
+# Note: the model is compiled when sampling is done for the first time.
+# Some unimportant warning messages might show up during compilation.
 
 rob.cor.mcmc = function(x, iter = 6000, warmup = 1000, chains = 1) {
     
