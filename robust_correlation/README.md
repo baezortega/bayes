@@ -13,8 +13,8 @@ http://www.sumsar.net/blog/2013/08/robust-bayesian-estimation-of-correlation/
 http://www.sumsar.net/blog/2013/08/bayesian-estimation-of-correlation/
 
 
-To see the HTML tutorial, go to:
---------------------------------
+To read the HTML tutorial, go to:
+---------------------------------
 
 http://htmlpreview.github.io/?https://github.com/baezortega/bayes/blob/master/robust_correlation/robust_correlation.html
 

@@ -1,5 +1,7 @@
 ---
 title: "Bayesian robust correlation with Stan in R"
+subtitle: "(and why you should use Bayesian methods)\n"
+author: "Adrian Baez-Ortega"
 date: 2018/05/23
 output:
   html_document:
@@ -32,7 +34,7 @@ Let's try the model on some artificial correlated data in R. We will need the fo
 ```{r results="hide", message=FALSE, warning=FALSE}
 library(rstan)    # to run the Bayesian model (stan)
 library(coda)     # to obtain HPD intervals (HPDinterval)
-library(mvtnorm)  # to generate random correlated data (rmvt)
+library(mvtnorm)  # to generate random correlated data (rmvnorm)
 library(car)      # to plot the inferred distribution (dataEllipse)
 ```
 
@@ -79,7 +81,7 @@ cor(x.noisy, method="spearman")[1, 2]
 
 Now, as Bååth explained, we would like a model that is able to recognise the linear correlation in the bulk of the data, while accounting for the outliers as infrequent observations. The _t_-distribution does this naturally and dynamically, as long as we treat the degrees of freedom (`nu`) as a parameter with its own prior distribution.
 
-The code for my Stan version of Bååth's multivariate _t_ model is reproduced below, and can be found in the file `robust_correlation.stan`.
+The code for my Stan version of Bååth's multivariate _t_ model is reproduced below, and can be found in the file [`robust_correlation.stan`](https://github.com/baezortega/bayes/blob/master/robust_correlation/robust_correlation.stan). Suitable vague priors are defined for all model parameters (for details about the prior on `nu`, see the related post in [John Kruschke's blog](http://doingbayesiandataanalysis.blogspot.co.uk/2015/12/prior-on-df-normality-parameter-in-t.html).)
 
 ```
 data {
@@ -112,14 +114,14 @@ model {
     sigma ~ uniform(0, 100000);
     rho ~ uniform(-1, 1);
     mu ~ normal(0, 100000);
-    nu ~ exponential(1/30.0);   // see http://doingbayesiandataanalysis.blogspot.co.uk/2015/12/prior-on-df-normality-parameter-in-t.html
+    nu ~ exponential(1/30.0);
     
     // Draw samples from the estimated bivariate t-distribution (for assessment of fit)
     x_rand ~ multi_student_t(nu, mu, cov);
 }
 ```
 
-Now, let's first run the model on the clean data. The time this takes will depend on the number of iterations and chains we use, but it shouldn't be long. (Note that the model has to be compiled the first time it is run. A lot of unimportant warning messages might show up during compilation, before MCMC sampling starts.)
+Now, let's first run the model on the clean data. The time this takes will depend on the number of iterations and chains we use, but it shouldn't be long. (Note that the model has to be compiled the first time it is run. Some unimportant warning messages might show up during compilation, before MCMC sampling starts.)
 
 ```{r include=FALSE}
 # This is just to avoid compilation messages from being displayed
@@ -269,9 +271,9 @@ is somewhat more precise and clear than saying
 > _According to the test, we are 95% confident that the correlation coefficient has a value somewhere between -0.41 and -0.79; we don't really __know__ if this interval contains the value, but if we could repeat this analysis on infinite different samples, we would be wrong just 5% of the time!_
 </div>
 
-However, it is important to note that the precision of our posterior estimates will depend on how many iterations of MCMC sampling we perform. For example, note that the probability that `rho` is zero or positive, `P(rho ≥ 0)`, is estimated to be zero. This statement is not entirely accurate, given that we didn't run the model for very long. To increase the precision of our probabilistic statements, we would need to run the model for longer (i.e. sample more MCMC samples), and this would eventually give us a very small (but non-zero) posterior probability for this event. For example, if the actual posterior probability that `rho` is zero or positive were, say, one in a million, then we would need to sample (on average) a million MCMC samples in order to achieve the necessary accuracy. (But normally we are not interested in that degree of precision.)
+However, it is important to note that the precision of our posterior estimates will depend on how many iterations of MCMC sampling we perform. For example, note that the probability that `rho` is zero or positive, `P(rho ≥ 0)`, is estimated to be zero. This statement is not entirely accurate, given that we didn't run the model for very long. To increase the precision of our probabilistic statements, we would need to run the model for longer (i.e. sample more MCMC samples), and this would eventually give us a very small (but non-zero) posterior probability for this event. For example, if the actual posterior probability that `rho` is zero or positive were, say, one in a million, then we would need to sample (on average) a million MCMC samples in order to achieve the necessary accuracy. But normally we are not interested in that degree of precision; if we have sampled 12000 MCMC samples, we can at least declare the probability to be smaller than $^1/_{12000}$.
 
-Finally, I have wrapped the model itself and the code that runs it inside a function called `rob.cor.mcmc`, which is in the file `rob.cor.mcmc.R`. This uses a default of 6000 MCMC iterations and a single chain in order to run faster, but this can be altered using the arguments `iter`, `warmup` and `chains`). This function plots the MCMC trace and posterior distribution for `rho`, prints a handful of basic posterior statistics and returns the same object generated by the `stan` function, from which you can then extract much more information using the `rstan` and `coda` packages.
+Finally, I have wrapped the model itself and the code that runs it inside a function called `rob.cor.mcmc`, which is in the file [`rob.cor.mcmc.R`](https://github.com/baezortega/bayes/blob/master/robust_correlation/rob.cor.mcmc.R). This uses a default of 6000 MCMC iterations and a single chain in order to run faster, but this can be altered using the arguments `iter`, `warmup` and `chains`). This function plots the MCMC trace and posterior distribution for `rho`, prints a handful of basic posterior statistics and returns the same object generated by the `stan` function, from which you can then extract much more information using the `rstan` and `coda` packages.
 
 ```{r include=FALSE}
 # This is just to avoid compilation messages from being displayed
