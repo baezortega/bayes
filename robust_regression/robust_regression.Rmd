@@ -1,0 +1,295 @@
+---
+title: "Bayesian robust simple linear regression with Stan in R"
+author: "Adrian Baez-Ortega"
+date: 2018/05/25
+output:
+  github_document:
+    css: styles.css
+---
+</br>
+
+Simple linear regression is a popular and useful technique for estimating the linear relationship between two variables based on matched pairs of observations, as well as for predicting the probable value of one variable (the _response_ variable) according to the value of the other (the _explanatory_ variable). When plotting the results of linear regression graphically, the explanatory variable is normally plotted on the _x_-axis, and the response variable on the _y_-axis.
+
+The standard approach to linear regression is defining the equation for a straight line that represents the relationship between the variables as accurately as possible. The equation for the line defines _y_ (the response variable) as a linear function of _x_ (the explanatory variable):
+
+$$
+y = \alpha + \beta x + \epsilon 
+$$
+
+In this equation, $\epsilon$ represents the error in the linear relationship: if no noise were allowed, then _x_ and _y_ would have to be related in a perfect straight line. Because we assume that the relationship between _x_ and _y_ is truly linear, any variation that is observed around the regression line must be random error, and therefore have a normal distribution. In a Bayesian sense, the relationship between the variables could be formalised as
+
+$$
+y \sim N(\alpha + \beta x, \sigma)
+$$
+
+That is, the response variable has a normal probability distribution with a mean equal to the regression line, and some standard deviation $\sigma$, as illustrated in the diagram below.
+
+![](https://i.stack.imgur.com/MPSbd.gif)
+
+This formulation inherently captures the random error around the regression line – as long as this error is _actually_ normally distributed. Just as with Pearson's [correlation coefficient](https://github.com/baezortega/bayes/tree/master/robust_correlation), the normality assumption adopted by classical regression methods makes them very sensitive to noisy or non-normal data. This normally results in an underestimation of the relationship between the variables, as the normal distribution needs to be shifted in parameter space in order to accommodate the outliers in the data as well as possible. In a frequentist paradigm, implementing a linear regression model that is robust to outliers entails quite convoluted [statistical approaches](https://en.wikipedia.org/wiki/Robust_regression); but in Bayesian statistics, when we want robustness, we model the data using a [_t_-distribution](https://en.wikipedia.org/wiki/Student%27s_t-distribution). This distribution has a parameter $\nu$, known as the _degrees of freedom_, which dictates how close to normality the distribution is: large values of $\nu$ (roughly $\nu$ > 30) result in a distribution that is equivalent to the normal distribution, whereas low small values of $\nu$ produce a distribution with heavy tails. Thus, by incorporating $\nu$ in the model as an extra parameter, we can allow the _t_-distribution to be as normal or non-normal as the data imply, while still capturing the underlying relationship between the variables.
+
+The formulation for the Bayesian model for robust simple linear regression is shown below. We define a _t_ likelihood for the response variable, and suitable vague priors on the explanatory variable and all the model parameters (for details about the prior on $\nu$, see the related post in [John Kruschke's blog](http://doingbayesiandataanalysis.blogspot.co.uk/2015/12/prior-on-df-normality-parameter-in-t.html).)
+
+$$
+y \sim T(\alpha + \beta x,\  \sigma,\  \nu)\\
+x,\  \alpha,\  \beta \sim N(0, \infty)\\
+\sigma \sim U(0, \infty)\\
+\nu \sim Exp(\tfrac{1}{30})\\
+$$
+
+The Stan code for the model is reproduced below, and can be found in the file [`robust_regression.stan`](https://github.com/baezortega/bayes/blob/master/robust_regression/robust_regression.stan).
+
+```
+data {
+    int<lower=1> N;  // number of observations
+    real x[N];       // input data for the explanatory/independent variable
+    real y[N];       // input data for the response/dependent variable
+}
+
+parameters {
+    real alpha;           // intercept
+    real beta;            // coefficient
+    real<lower=0> sigma;  // scale of the t-distribution
+    real<lower=0> nu;     // degrees of freedom of the t-distribution
+    real y_rand;          // random samples from the t-distribution
+}
+
+transformed parameters {
+    real mu[N] = alpha + beta * x;  // mean response
+}
+
+model {
+    // Likelihood
+    // Student's t-distribution instead of normal for robustness
+    y ~ student_t(nu, mu, sigma);
+    x ~ normal(0, 100000);
+    
+    // Uninformative priors on all parameters
+    alpha ~ normal(0, 100000);
+    beta ~ normal(0, 100000);
+    sigma ~ uniform(0, 100000);
+    nu ~ exponential(1/30.0);
+    
+    // Draw samples from the estimated t-distribution (for assessment of fit)
+    y ~ student_t(nu, mu, sigma);
+}
+```
+
+Let's pitch this Bayesian model against the standard linear model fitting provided in R (`lm` function) on some simulated data. We will need the following packages:
+
+```{r results="hide", message=FALSE, warning=FALSE}
+library(rstan)    # to run the Bayesian model (stan)
+library(coda)     # to obtain HPD intervals (HPDinterval)
+library(mvtnorm)  # to generate random correlated data (rmvnorm)
+library(car)      # to plot the inferred distribution (dataEllipse)
+```
+
+We can generate random data from a multivariate normal distribution with pre-specified correlation (`rho`) using the `rmvnorm` function in the `mvtnorm` package.
+
+```{r}
+sigma = c(20, 40)
+rho = -0.95
+cov.mat = matrix(c(sigma[1] ^ 2,
+                   sigma[1] * sigma[2] * rho,
+                   sigma[1] * sigma[2] * rho,
+                   sigma[2] ^ 2),
+                 nrow=2, byrow=T)
+
+set.seed(210191)
+points.clean = as.data.frame(rmvnorm(n=40, sigma=cov.mat))
+colnames(points.clean) = c("x", "y")
+plot(points.clean, pch=16)
+```
+
+Let's first run the standard `lm` function on these data and look at the fit.
+
+```{r}
+lm.fit = lm(y ~ x, data=points.clean)
+plot(points.clean, pch=16)
+abline(lm.fit, col="blue", lwd=2)
+```
+
+Looks publication-ready. Anyway, these data are a bit too clean for my taste, so let's sneak some extreme outliers in.
+
+```{r}
+points.noisy = points.clean
+points.noisy[1:3,] = matrix(c(-20, -80,
+                         20, 100,
+                         40, 40),
+                       nrow=3, byrow=T)
+plot(points.noisy, pch=16)
+```
+
+Now, the error-normality assumption of standard linear regression models doesn't deal well with this kind of non-normal outliers, and the estimated regression line quite disagrees with the data.
+
+```{r}
+lm.fit = lm(y ~ x, data=points.noisy)
+plot(points.noisy, pch=16)
+abline(lm.fit, col="blue", lwd=2)
+```
+
+So we need a model that is able to recognise the linear relationship in the bulk of the data, while accounting for the outliers as infrequent observations. The _t_-distribution does this naturally and dynamically, as long as we treat the degrees of freedom ($\nu$) as a parameter with its own prior distribution.
+
+So, let's now run our Bayesian regression model on the clean data first. The time this takes will depend on the number of iterations and chains we use, but it shouldn't be long. (Note that the model has to be compiled the first time it is run. Some unimportant warning messages might show up during compilation, before MCMC sampling starts.)
+
+```{r include=FALSE}
+# This is just to avoid compilation messages from being displayed
+data.clean = list(x=points.clean$x, y=points.clean$y, N=nrow(points.clean))
+reg.clean = stan(file="robust_regression.stan", data=data.clean, seed=210191, iter=8000, warmup=2000, chains=2)
+```
+
+```{r}
+# Set up model data
+data.clean = list(x=points.clean$x,
+                  y=points.clean$y,
+                  N=nrow(points.clean))
+
+# Run the model
+reg.clean = stan(file="robust_regression.stan", data=data.clean,
+                 seed=210191, iter=8000, warmup=2000, chains=2)
+```
+
+We can take a look at the MCMC traces and the posterior distributions for `alpha`, `beta` (the intercept and slope of the regression line) and `nu` (the degrees of freedom).
+
+```{r}
+stan_trace(reg.clean, pars=c("alpha", "beta", "nu"))
+stan_dens(reg.clean, pars=c("alpha", "beta", "nu"))
+stan_plot(reg.clean, pars=c("alpha", "beta", "nu"))
+```
+
+
+
+
+The traces show convergence of the two MCMC chains, and almost all the weight of the posterior distribution of `rho` lies between -0.90 and -1. The posterior of `nu` covers large values, indicating that the data are normally distributed (remember that a _t_-distribution with high `nu` is equivalent to a normal distribution).
+
+We can see how well the inferred bivariate distribution fits the data by plotting the random samples that the model drew from this distribution (`x_rand` in the model).
+
+```{r}
+points.rand = extract(reg.clean, c("x_rand"))[[1]]
+plot(points.clean, xlim=c(-60, 55), ylim=c(-120, 120), pch=16)
+dataEllipse(points.rand, levels = c(0.5, 0.95),
+            fill=T, plot.points = FALSE)
+```
+
+In the plot above, the dark-blue inner ellipse is the area containing 50% of the posterior distribution, and the pale-blue outer ellipse is the area containing 95% of the distribution. 
+
+It seems that the distribution inferred by the model does fit the data quite well. Now, this was expected for such eerily clean data. Let's try on the noisy data; remember that the classical correlations were strongly affected by the introduced outliers.
+
+```{r}
+cor(points.noisy, method="pearson")[1, 2]
+cor(points.noisy, method="spearman")[1, 2]
+```
+
+We run the model on the noisy data as before.
+
+```{r}
+# Set up model data
+data.noisy = list(x=points.noisy, N=nrow(points.noisy))
+
+# Use robust estimates of the parameters as initial values
+init.noisy = list(mu = apply(data.noisy$x, 2, median),
+                  sigma = apply(data.noisy$x, 2, mad),
+                  rho = cor(data.noisy$x, method="spearman")[1, 2])
+
+# Run the model
+reg.noisy = stan(file="robust_correlation.stan", 
+                 data=data.noisy, init=rep(list(init.noisy), 2), 
+                 seed=210191, iter=8000, warmup=2000, chains=2)
+```
+
+```{r}
+# Plot traces and posteriors
+stan_trace(reg.noisy, pars=c("rho", "mu", "sigma", "nu"))
+stan_dens(reg.noisy, pars=c("rho", "mu", "sigma", "nu"))
+stan_plot(reg.noisy, pars=c("rho", "mu", "sigma", "nu"))
+```
+
+The posterior distribution of `rho` hasn't changed that much, but notice the difference in the posterior of `nu`. Lower values of `nu` indicate that the inferred bivariate _t_-distribution has heavy tails this time (i.e. is far from normality), in order to accommodate the outliers. If this noise were not accommodated in `nu` (e.g. if we used a normal distribution), then it would have to be accommodated in the distribution of `rho`, thus strongly biasing the correlation estimates.
+
+Now, let's see how the inferred bivariate _t_-distribution fits the noisy data.
+
+```{r}
+points.rand = extract(reg.noisy, c("x_rand"))[[1]]
+plot(points.noisy, xlim=c(-230, 230), ylim=c(-400, 400), pch=16)
+dataEllipse(points.rand, levels = c(0.5, 0.95),
+            fill=T, plot.points = FALSE)
+```
+
+The bivariate _t_-distribution seems to have a similar fit than the one inferred from the clean data; its slope is not affected by the outliers. However, notice how the tails of the distribution (pale-blue outer ellipse) have grown much wider than before.
+
+Now that we have seen how the model provides robust estimation of the correlation coefficient, it would be good to take a good look at the estimated `rho`. Let's extract the MCMC samples for this parameter's posterior from the `reg.noisy` object produced by the `stan` function.
+
+```{r}
+rho.noisy = as.numeric(extract(reg.noisy, "rho")[[1]])
+length(rho.noisy)  # number of MCMC samples
+mean(rho.noisy)    # posterior mean
+HPDinterval(as.mcmc(rho.noisy), prob=0.99)  # 99% highest posterior density interval
+```
+
+`rho` has a posterior mean of -0.93 and a 99% highest posterior density (HPD) interval of [-0.98, -0.83] (i.e. 99% of its posterior probability lies within this interval). The posterior mean is very close to the original `rho = -0.95` that we used to generate the data, reflecting the model's robustness. But an important point here is that we can obtain these posterior statistics (and many more) by looking directly at the MCMC samples. Having __direct access to the posterior distribution__ of the parameter(s) we are interested in (in this case, the correlation coefficient) means that we don't have to resort to null hypothesis testing to assess the certainty of our estimate.
+
+For example, let's run a standard correlation test on the noisy data.
+
+```{r}
+reg.test(points.noisy[,1], points.noisy[,2], method="pearson")
+```
+
+This provides the estimated value for the correlation coefficient (`cor`) together with a _p_-value and a confidence interval. In frequentist statistics, the estimated parameter is assumed to have a fixed, unknown true value, and this `cor = -0.6365649` is the best informed guess of that value. The 95% confidence interval defines a range of likely values where the true value might be, but it is _not_ the same as saying that this interval has a 95% probability of containing the true value; since the true value is assumed to be a fixed number, the probability of any interval containing the true value is either 0 or 1. The 95% confidence interval represents something [more convoluted](https://en.wikipedia.org/wiki/Confidence_interval) involving infinite hypothetical repetitions of the same analysis using different data samples.
+
+The small _p_-value tells us what is the probability that values such as those in `points.noisy`, or even more strongly correlated, could be observed if the null hypothesis (that the true correlation is zero) were correct. In other words, it's the probability that the variables are _not_ correlated in reality and what we are seeing is the product of random variation.
+
+So, frequentist correlation tests have a rather indirect way of providing information about the true correlation coefficient. Let's see now what we can say about this from the Bayesian standpoint. In Bayesian statistics, the true value of the parameter of interest is not a fixed quantity, but it has a probability distribution. We can investigate this distribution empirically simply by looking at the MCMC samples.
+
+```{r}
+# Print some posterior statistics
+# Posterior mean of rho:
+mean(rho.noisy)
+
+# Rho values with 99% posterior probability:
+hpd99 = HPDinterval(as.mcmc(rho.noisy), prob=0.99)
+cat("[", hpd99[,"lower"], ", ", hpd99[,"upper"], "]", sep="")
+
+# Posterior probability that rho is ≤0: P(rho ≤ 0)
+mean(rho.noisy <= 0)
+
+# Posterior probability that rho is ≥0: P(rho ≥ 0)
+mean(rho.noisy >= 0)
+
+# Posterior probability that rho is <-0.5: P(rho < -0.5)
+mean(rho.noisy < -0.5)
+
+# Posterior probability that rho is small: P(-0.1 < rho < 0.1)
+mean(rho.noisy > -0.1 & rho.noisy < 0.1)
+```
+
+This shows how we can directly interrogate the posterior distribution in order to make clear probabilistic statements about the distribution of the true `rho`. A statement like 
+
+<div class="quote-container">
+> _According to the model, the correlation coefficient is between -0.83 and -0.98 with 99% probability_
+</div>
+
+is somewhat more precise and clear than saying
+
+<div class="quote-container">
+> _According to the test, we are 95% confident that the correlation coefficient has a value somewhere between -0.41 and -0.79; we don't really __know__ if this interval contains the value, but if we could repeat this analysis on infinite different samples, we would be wrong just 5% of the time!_
+</div>
+
+However, it is important to note that the precision of our posterior estimates will depend on how many iterations of MCMC sampling we perform. For example, note that the probability that `rho` is zero or positive, `P(rho ≥ 0)`, is estimated to be zero. This statement is not entirely accurate, given that we didn't run the model for very long. To increase the precision of our probabilistic statements, we would need to run the model for longer (i.e. sample more MCMC samples), and this would eventually give us a very small (but non-zero) posterior probability for this event. For example, if the actual posterior probability that `rho` is zero or positive were, say, one in a million, then we would need to sample (on average) a million MCMC samples in order to achieve the necessary accuracy. But normally we are not interested in that degree of precision; if we have sampled 12000 MCMC samples, we can at least declare the probability to be smaller than $^1/_{12000}$.
+
+Finally, I have wrapped the model itself and the code that runs it inside a function called `rob.reg.mcmc`, which is in the file `rob.reg.mcmc.R`. This uses a default of 6000 MCMC iterations and a single chain in order to run faster, but this can be altered using the arguments `iter`, `warmup` and `chains`). This function plots the MCMC trace and posterior distribution for `rho`, prints a handful of basic posterior statistics and returns the same object generated by the `stan` function, from which you can then extract much more information using the `rstan` and `coda` packages.
+
+```{r include=FALSE}
+# This is just to avoid compilation messages from being displayed
+source("rob.reg.mcmc.R")
+reg.noisy2 = rob.reg.mcmc(points.noisy, iter=100, warmup=50)
+```
+
+```{r}
+source("rob.reg.mcmc.R")
+reg.noisy2 = rob.reg.mcmc(points.noisy)
+```
+
+---
+
+_Adrian Baez-Ortega  
+2018_

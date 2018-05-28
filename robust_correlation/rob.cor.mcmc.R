@@ -8,10 +8,13 @@
 #    http://www.sumsar.net/blog/2013/08/robust-bayesian-estimation-of-correlation/
 #    http://www.sumsar.net/blog/2013/08/bayesian-estimation-of-correlation/
 #
+# Thanks are due to Aki Vehtari for providing invaluable advice on how to 
+# improve this model
+#
 # Note: the model is compiled when sampling is done for the first time.
 # Some unimportant warning messages might show up during compilation.
 
-rob.cor.mcmc = function(x, iter = 6000, warmup = 1000, chains = 1) {
+rob.cor.mcmc = function(x, iter = 2000, warmup = 500, chains = 4) {
     
     library(rstan)
     library(coda)
@@ -20,49 +23,47 @@ rob.cor.mcmc = function(x, iter = 6000, warmup = 1000, chains = 1) {
 
     # Set up model data
     model.data = list(N=nrow(x), x=x)
-    
-    # Use robust estimates of the parameters as initial values
-    model.init = list(mu = apply(x, 2, median),
-                      sigma = apply(x, 2, mad),
-                      rho = cor(x[, 1], x[, 2], method="spearman"))
 
     # Stan model definition
     stan.model = "
-    data {
-        int<lower=1> N;  // number of observations
-        matrix[N, 2] x;  // input data: rows are observations, columns are the two variables
-    }
-    parameters {
-        vector[2] mu;                 // locations of the marginal t distributions
-        real<lower=0> sigma[2];       // scales of the marginal t distributions
-        real<lower=0> nu;             // degrees of freedom of the marginal t distributions
-        real<lower=-1, upper=1> rho;  // correlation coefficient
-        vector[2] x_rand;             // random samples from the bivariate t distribution
-    }
-    transformed parameters {
-        // Covariance matrix
-        cov_matrix[2] cov = [[      sigma[1] ^ 2       , sigma[1] * sigma[2] * rho],
-                             [sigma[1] * sigma[2] * rho,       sigma[2] ^ 2       ]];
-    }
-    model {
-        // Likelihood
-        // Bivariate Student-t distribution used instead of normal for robustness
-        for (n in 1:N) {
-            x[n] ~ multi_student_t(nu, mu, cov);
+        data {
+            int<lower=1> N;  // number of observations
+            vector[2] x[N];  // input data: rows are observations, columns are the two variables
         }
-        // Uninformative priors on all parameters
-        sigma ~ uniform(0, 100000);
-        rho ~ uniform(-1, 1);
-        mu ~ normal(0, 100000);
-        nu ~ exponential(1/30.0);   // see http://doingbayesiandataanalysis.blogspot.co.uk/2015/12/prior-on-df-normality-parameter-in-t.html
-        // Draw samples from the estimated bivariate t distribution (for assessment of fit)
-        x_rand ~ multi_student_t(nu, mu, cov);
-    }"
+        
+        parameters {
+            vector[2] mu;                 // locations of the marginal t distributions
+            real<lower=0> sigma[2];       // scales of the marginal t distributions
+            real<lower=1> nu;             // degrees of freedom of the marginal t distributions
+            real<lower=-1, upper=1> rho;  // correlation coefficient
+        }
+        
+        transformed parameters {
+            // Covariance matrix
+            cov_matrix[2] cov = [[      sigma[1] ^ 2       , sigma[1] * sigma[2] * rho],
+            [sigma[1] * sigma[2] * rho,       sigma[2] ^ 2       ]];
+        }
+        
+        model {
+            // Likelihood
+            // Bivariate Student's t-distribution instead of normal for robustness
+            x ~ multi_student_t(nu, mu, cov);
+            
+            // Noninformative priors on all parameters
+            sigma ~ normal(0,100);
+            mu ~ normal(0, 100);
+            nu ~ gamma(2, 0.1);
+        }
+        
+        generated quantities {
+            // Random samples from the estimated bivariate t-distribution (for assessment of fit)
+            vector[2] x_rand;
+            x_rand = multi_student_t_rng(nu, mu, cov);
+        }"
     
     # Run the model
     stan.cor = stan(model_name="robust_regression",
-                    model_code=stan.model,
-                    data=model.data, init=rep(list(model.init), chains), 
+                    model_code=stan.model, data=model.data,
                     seed=210191, iter=iter, warmup=warmup, chains=chains)
     
     # Obtain the MCMC samples of rho
