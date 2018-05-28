@@ -17,4 +17,4 @@ Thanks are due to __Aki Vehtari__ for providing invaluable advice on how to impr
 To learn how to use this model (and why you should use it), see:
 ----------------------------------------------------------------
 
-https://baezortega.github.io/2018/05/23/robust-correlation/
+https://baezortega.github.io/2018/05/28/robust-correlation/
