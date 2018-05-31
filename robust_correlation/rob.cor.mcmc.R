@@ -50,8 +50,8 @@ rob.cor.mcmc = function(x, iter = 2000, warmup = 500, chains = 4) {
             x ~ multi_student_t(nu, mu, cov);
             
             // Noninformative priors on all parameters
-            sigma ~ normal(0,100);
-            mu ~ normal(0, 100);
+            sigma ~ normal(0, 1000);
+            mu ~ normal(0, 1000);
             nu ~ gamma(2, 0.1);
         }
         
