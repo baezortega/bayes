@@ -29,18 +29,18 @@ transformed parameters {
 }
 
 model {
-  // Likelihood
-  // Bivariate Student's t-distribution instead of normal for robustness
-  x ~ multi_student_t(nu, mu, cov);
-    
-  // Noninformative priors on all parameters
-  sigma ~ normal(0, 1000);
-  mu ~ normal(0, 1000);
-  nu ~ gamma(2, 0.1);
+    // Likelihood
+    // Bivariate Student's t-distribution instead of normal for robustness
+    x ~ multi_student_t(nu, mu, cov);
+
+    // Noninformative priors on all parameters
+    sigma ~ normal(0, 1000);
+    mu ~ normal(0, 1000);
+    nu ~ gamma(2, 0.1);
 }
 
 generated quantities {
-  // Random samples from the estimated bivariate t-distribution (for assessment of fit)
-  vector[2] x_rand;
-  x_rand = multi_student_t_rng(nu, mu, cov);
+    // Random samples from the estimated bivariate t-distribution (for assessment of fit)
+    vector[2] x_rand;
+    x_rand = multi_student_t_rng(nu, mu, cov);
 }
