@@ -1,20 +1,14 @@
-Bayesian robust correlation with Stan in R
-==========================================
+Bayesian robust regression with Stan in R
+=========================================
 
 This folder contains: 
 
-* A Stan Bayesian model for robust correlation (__robust_correlation.stan__)
-* A function to run the model from R using the rstan package (__rob.cor.mcmc.R__)
-* A tutorial explaining how to use the model, and showing the advantages of Bayesian correlation and Bayesian methods in general (__robust_correlation.html__, __robust_correlation.Rmd__)
-
-This model is based on __Rasmus Bååth__'s robust correlation model, see:
-
-http://www.sumsar.net/blog/2013/08/robust-bayesian-estimation-of-correlation/   
-http://www.sumsar.net/blog/2013/08/bayesian-estimation-of-correlation/
+* A Stan Bayesian model for robust regression (__robust_regression.stan__)
+* A function to run the model from R using the rstan package (__rob.regression.mcmc.R__)
 
 
-To see the HTML tutorial, go to:
---------------------------------
+To learn how to use this model (and why you should use it), see:
+----------------------------------------------------------------
 
-http://htmlpreview.github.io/?https://github.com/baezortega/bayes/blob/master/robust_correlation/robust_correlation.html
+https://baezortega.github.io/2018/08/06/robust_regression
 
