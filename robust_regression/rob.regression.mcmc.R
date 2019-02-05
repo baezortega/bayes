@@ -7,8 +7,9 @@
 # Note: the model is compiled when sampling is done for the first time.
 # Some unimportant warning messages might show up during compilation.
 
-rob.regression.mcmc = function(x, y, x.pred = NULL, pred.int = 90, cred.int = 95, iter = 2000, 
-                               warmup = 500, chains = 4, seed = 911, xlab = "x", ylab = "y") {
+rob.regression.mcmc = function(x, y, x.pred = NULL, x.cred = NULL, pred.int = 90, cred.int = 95, 
+                               iter = 2000, warmup = 500, chains = 4, seed = 911, 
+                               xlab = "x", ylab = "y") {
     
     library(rstan)
     library(coda)
@@ -29,8 +30,14 @@ rob.regression.mcmc = function(x, y, x.pred = NULL, pred.int = 90, cred.int = 95
     }
     
     # Generate range of x values for estimation of credible interval of the mean response
-    M = 20
-    x.cred = seq(min(x), max(x), length.out=M)
+    if (is.null(x.cred)) {
+        M = 20
+        x.cred = seq(min(x), max(x), length.out=M)
+    }
+    else {
+        M = length(x.cred)
+    }
+    
     
     # Set up model data
     model.data = list(x=x, y=y, N=length(x),
