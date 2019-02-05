@@ -41,7 +41,7 @@ rob.cor.mcmc = function(x, iter = 2000, warmup = 500, chains = 4) {
         transformed parameters {
             // Covariance matrix
             cov_matrix[2] cov = [[      sigma[1] ^ 2       , sigma[1] * sigma[2] * rho],
-            [sigma[1] * sigma[2] * rho,       sigma[2] ^ 2       ]];
+                                 [sigma[1] * sigma[2] * rho,       sigma[2] ^ 2       ]];
         }
         
         model {
@@ -62,9 +62,9 @@ rob.cor.mcmc = function(x, iter = 2000, warmup = 500, chains = 4) {
         }"
     
     # Run the model
-    stan.cor = stan(model_name="robust_regression",
+    stan.cor = stan(model_name="robust_correlation",
                     model_code=stan.model, data=model.data,
-                    seed=210191, iter=iter, warmup=warmup, chains=chains)
+                    seed=911, iter=iter, warmup=warmup, chains=chains)
     
     # Obtain the MCMC samples of rho
     stan.rho = extract(stan.cor, "rho")[[1]]
